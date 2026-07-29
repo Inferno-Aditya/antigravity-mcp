@@ -172,12 +172,6 @@ class AgentManager:
             }
         }
 
-    def write_blackboard(self, key: str, value: str):
-        self.blackboard[key] = value
-
-    def read_blackboard(self, key: str):
-        return self.blackboard.get(key, None)
-
     def has_session(self, session_id: str) -> bool:
         return session_id in self.sessions
 
@@ -189,6 +183,12 @@ class AgentManager:
         session = self.sessions.get(session_id)
         if session:
             self._update_usage()
+            
+            # Implicit Shared Memory: Automatically tell the agent about the shared workspace memory file.
+            if session.workspace_path:
+                implicit_memory = f"\n\n[SYSTEM NOTE: You are part of a multi-agent team. A shared memory file exists at {os.path.join(session.workspace_path, 'TEAM_MEMORY.md')}. Use your file reading/writing tools to read from and write to this file to sync with other agents.]"
+                message += implicit_memory
+                
             await session.send_message(message, json_schema)
         else:
             raise KeyError(f"Session {session_id} not found")

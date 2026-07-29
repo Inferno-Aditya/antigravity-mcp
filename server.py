@@ -76,20 +76,6 @@ def get_model_usage() -> str:
     return json.dumps(manager.get_usage())
 
 @mcp.tool()
-def write_blackboard(key: str, value: str) -> str:
-    """Writes a shared value to the global blackboard memory, allowing agents to share code constraints and state."""
-    manager.write_blackboard(key, value)
-    return f"Successfully wrote {key} to blackboard."
-
-@mcp.tool()
-def read_blackboard(key: str) -> str:
-    """Reads a shared value from the global blackboard memory."""
-    val = manager.read_blackboard(key)
-    if val is None:
-        return f"Key {key} not found."
-    return val
-
-@mcp.tool()
 async def apply_code_fix(filepath: str, target: str, replacement: str) -> str:
     """Applies a direct find-and-replace fix to a file, useful for debugging via MCP."""
     try:
