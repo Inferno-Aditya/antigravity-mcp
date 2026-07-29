@@ -12,11 +12,18 @@ Creates a new background agent session tracking memory and state.
   - `model` (str, optional): The Gemini model to use (e.g., `pro`, `flash`, `flash_lite`).
   - `agent_type` (str, optional): Specialized agent type to spawn.
   - `reasoning_effort` (str, optional): Sets reasoning strictness (`low`, `medium`, `high`).
-  - `skip_permissions` (bool, optional): If `True`, the agent bypasses terminal permission prompts.
+  - `skip_permissions` (bool, optional): Defaults to `True` for headless agents, bypassing terminal permission prompts safely.
   - `mode` (str, optional): Set to `plan` for read-only planning, or `accept-edits` for immediate execution.
 
+### `wait_for_idle`
+Blocks and waits until the target agent is no longer "working", saving orchestrators from having to build fragile polling loops.
+- **Parameters**:
+  - `session_id` (str): The target agent session.
+  - `timeout_seconds` (int, optional): Defaults to 300. Max wait time.
+- **Returns**: A JSON string containing the agent's new messages since the last read.
+
 ### `send_message`
-Sends a prompt or instruction to a specific agent session.
+Sends a prompt or instruction to a specific agent session. (Note: Automatically injects an `os.listdir()` of the workspace so the agent knows what files exist).
 - **Parameters**:
   - `session_id` (str): The target agent session.
   - `message` (str): The prompt for the agent.
@@ -29,10 +36,11 @@ Forces the agent to output its final response adhering perfectly to a provided J
   - `json_schema` (str): The JSON schema string that the output must conform to.
 
 ### `check_inbox`
-Checks the specified session's inbox for streaming tokens, tool execution logs, and thoughts.
+Checks the specified session's persistent message log for new streaming tokens, tool calls, and thoughts.
 - **Parameters**:
   - `session_id` (str): The target agent session.
-- **Returns**: A JSON string containing `status` (`idle`, `working`) and a list of new messages.
+  - `mode` (str, optional): `read` (returns new messages and advances cursor), `peek` (returns new messages without advancing), `all` (returns full history). Defaults to `read`.
+- **Returns**: A JSON string containing `status` (`idle`, `working`, `error`, `completed`) and a list of new messages.
 
 ### `get_agent_status`
 Returns the running status of an agent (`idle`, `working`, `error`).

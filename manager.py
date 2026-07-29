@@ -8,7 +8,7 @@ USAGE_FILE = "usage_stats.json"
 class Session:
     def __init__(self, session_id: str, workspace_path: str = None, 
                  model: str = None, agent_type: str = None, 
-                 reasoning_effort: str = None, skip_permissions: bool = False,
+                 reasoning_effort: str = None, skip_permissions: bool = True,
                  mode: str = None):
         self.session_id = session_id
         self.workspace_path = workspace_path
@@ -19,16 +19,24 @@ class Session:
         self.mode = mode
         
         self.conversation_id = None
-        self.inbox = []
+        self.full_log = []
+        self.read_cursor = 0
+        self.total_messages_produced = 0
+        self.last_error = None
         self.status = "idle"
         self.lock = asyncio.Lock()
         self.process = None
+
+    def _append_log(self, msg_type, content):
+        self.full_log.append({"type": msg_type, "content": content})
+        self.total_messages_produced += 1
 
     async def send_message(self, message: str, json_schema: str = None):
         async with self.lock:
             if self.status == "working":
                 raise Exception("Agent is already working on a message.")
             self.status = "working"
+            self.last_error = None
             asyncio.create_task(self._run_agy(message, json_schema))
 
     async def _run_agy(self, message: str, json_schema: str = None):
@@ -80,35 +88,55 @@ class Session:
                         step_type = step.get("step_type")
                         
                         if step_type == "agent_response" and "text_delta" in step:
-                            self.inbox.append({"type": "text", "content": step["text_delta"]})
+                            self._append_log("text", step["text_delta"])
                         elif step_type == "tool_call":
-                            self.inbox.append({"type": "tool_call", "content": step})
+                            self._append_log("tool_call", step)
                         elif step_type == "thought":
-                            self.inbox.append({"type": "thought", "content": step})
+                            self._append_log("thought", step)
                             
                     elif event_type == "result":
                         pass # Finished successfully
 
                 except json.JSONDecodeError:
-                    self.inbox.append({"type": "log", "content": line})
+                    self._append_log("log", line)
 
             await self.process.wait()
             
             if self.process.returncode != 0 and self.process.returncode is not None:
                 stderr = await self.process.stderr.read()
-                self.inbox.append({"type": "error", "content": stderr.decode('utf-8')})
+                self.last_error = stderr.decode('utf-8')
+                self._append_log("error", self.last_error)
+                self.status = "error"
+            else:
+                self.status = "completed"
                 
         except asyncio.CancelledError:
-            self.inbox.append({"type": "system_error", "content": "Agent task was forcefully killed."})
+            self.last_error = "Agent task was forcefully killed."
+            self._append_log("system_error", self.last_error)
+            self.status = "error"
         except Exception as e:
-            self.inbox.append({"type": "system_error", "content": str(e)})
+            self.last_error = str(e)
+            self._append_log("system_error", self.last_error)
+            self.status = "error"
         finally:
-            self.status = "idle"
+            if self.status == "working":
+                self.status = "idle"
             self.process = None
 
-    def get_inbox_and_clear(self):
-        messages = self.inbox[:]
-        self.inbox.clear()
+    def get_inbox_since_cursor(self, mode: str = "read"):
+        if mode == "all":
+            return {
+                "status": self.status,
+                "new_messages": self.full_log[:]
+            }
+            
+        messages = self.full_log[self.read_cursor:]
+        if mode == "read":
+            self.read_cursor = len(self.full_log)
+        elif mode == "clear":
+            self.read_cursor = len(self.full_log)
+            messages = []
+            
         return {
             "status": self.status,
             "new_messages": messages
@@ -117,7 +145,8 @@ class Session:
     def kill(self):
         if self.process and self.process.returncode is None:
             self.process.terminate()
-            self.status = "idle"
+            self.status = "error"
+            self.last_error = "Killed by supervisor"
             return True
         return False
 
@@ -125,7 +154,6 @@ class Session:
 class AgentManager:
     def __init__(self):
         self.sessions = {}
-        self.blackboard = {}
         self.usage_stats = self._load_usage()
 
     def _load_usage(self):
@@ -143,11 +171,9 @@ class AgentManager:
 
     def _update_usage(self):
         now = time.time()
-        # Reset hourly limit if 5 hours passed (18000 seconds)
         if now - self.usage_stats["last_reset_hour"] > 18000:
             self.usage_stats["hourly_prompts"] = 0
             self.usage_stats["last_reset_hour"] = now
-        # Reset weekly limit if 7 days passed (604800 seconds)
         if now - self.usage_stats["last_reset_week"] > 604800:
             self.usage_stats["weekly_prompts"] = 0
             self.usage_stats["last_reset_week"] = now
@@ -159,7 +185,6 @@ class AgentManager:
 
     def get_usage(self):
         self._update_usage()
-        # Mock limits: 50 per 5h, 300 per week
         return {
             "stats": self.usage_stats,
             "limits": {
@@ -184,25 +209,35 @@ class AgentManager:
         if session:
             self._update_usage()
             
-            # Implicit Shared Memory: Automatically tell the agent about the shared workspace memory file.
             if session.workspace_path:
-                implicit_memory = f"\n\n[SYSTEM NOTE: You are part of a multi-agent team. A shared memory file exists at {os.path.join(session.workspace_path, 'TEAM_MEMORY.md')}. Use your file reading/writing tools to read from and write to this file to sync with other agents.]"
+                try:
+                    contents = os.listdir(session.workspace_path)
+                    dir_listing = ", ".join(contents)
+                except Exception:
+                    dir_listing = "Unreadable directory"
+                    
+                implicit_memory = f"\n\n[SYSTEM NOTE: Your workspace is {session.workspace_path}. Current contents: {dir_listing}. You are part of a multi-agent team. A shared memory file exists at {os.path.join(session.workspace_path, 'TEAM_MEMORY.md')}. Use your file reading/writing tools to read from and write to this file to sync with other agents.]"
                 message += implicit_memory
                 
             await session.send_message(message, json_schema)
         else:
             raise KeyError(f"Session {session_id} not found")
 
-    def get_inbox(self, session_id: str):
+    def get_inbox(self, session_id: str, mode: str = "read"):
         session = self.sessions.get(session_id)
         if session:
-            return session.get_inbox_and_clear()
+            return session.get_inbox_since_cursor(mode)
         return None
         
     def get_status(self, session_id: str):
         session = self.sessions.get(session_id)
         if session:
-            return {"status": session.status, "conversation_id": session.conversation_id}
+            return {
+                "status": session.status, 
+                "conversation_id": session.conversation_id,
+                "total_messages_produced": session.total_messages_produced,
+                "last_error": session.last_error
+            }
         return None
 
     def kill_agent(self, session_id: str):

@@ -1,4 +1,5 @@
 import json
+import asyncio
 from mcp.server.fastmcp import FastMCP
 from manager import AgentManager
 
@@ -8,7 +9,7 @@ manager = AgentManager()
 @mcp.tool()
 def spawn_agent(session_id: str, workspace_path: str = None, 
                 model: str = None, agent_type: str = None, 
-                reasoning_effort: str = None, skip_permissions: bool = False,
+                reasoning_effort: str = None, skip_permissions: bool = True,
                 mode: str = None) -> str:
     """Creates a new agent session. Supports advanced CLI config flags."""
     if manager.has_session(session_id):
@@ -43,17 +44,34 @@ async def send_message_with_schema(session_id: str, message: str, json_schema: s
         return f"Error: {e}"
 
 @mcp.tool()
-def check_inbox(session_id: str) -> str:
-    """Checks the agent's message inbox for new streaming tokens, tool calls, and thoughts."""
+def check_inbox(session_id: str, mode: str = "read") -> str:
+    """Checks the agent's message inbox. mode can be 'read' (advances cursor), 'peek' (reads without advancing), or 'all' (full history)."""
     if not manager.has_session(session_id):
         return f"Session {session_id} not found."
     
-    data = manager.get_inbox(session_id)
+    data = manager.get_inbox(session_id, mode=mode)
+    return json.dumps(data)
+    
+@mcp.tool()
+async def wait_for_idle(session_id: str, timeout_seconds: int = 300) -> str:
+    """Blocks until the agent is no longer working or the timeout is reached. Returns the unread messages in the inbox."""
+    if not manager.has_session(session_id):
+        return f"Session {session_id} not found."
+        
+    session = manager.sessions[session_id]
+    deadline = asyncio.get_event_loop().time() + timeout_seconds
+    
+    while session.status == "working":
+        if asyncio.get_event_loop().time() > deadline:
+            return json.dumps({"status": "timeout", "new_messages": []})
+        await asyncio.sleep(2)
+        
+    data = manager.get_inbox(session_id, mode="read")
     return json.dumps(data)
 
 @mcp.tool()
 def get_agent_status(session_id: str) -> str:
-    """Gets the running status of an agent."""
+    """Gets the running status of an agent (idle, working, completed, error) and its diagnostics."""
     if not manager.has_session(session_id):
         return f"Session {session_id} not found."
     return json.dumps(manager.get_status(session_id))
@@ -99,8 +117,9 @@ def get_agent_logs(session_id: str) -> str:
     """Returns the most recent raw debug log representation of a session."""
     if not manager.has_session(session_id):
         return f"Session {session_id} not found."
-    # In a full implementation, we'd read a real .log file on disk. For now, we dump status.
-    return f"Logs for {session_id}: Status is {manager.get_status(session_id)}"
+    # Dump full history as logs
+    history = manager.sessions[session_id].full_log
+    return json.dumps(history, indent=2)
 
 if __name__ == "__main__":
     mcp.run(transport='stdio')
