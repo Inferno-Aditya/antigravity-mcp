@@ -74,10 +74,25 @@ Whenever an agent is spawned with a `workspace_path`, the MCP server automatical
 - The `google-antigravity` package installed globally or in your environment (providing the `agy` CLI).
 - A compatible MCP client (like Claude Desktop, cursor, or the Antigravity IDE).
 
-### 1. Clone the repository
+### 1-Click Installation
+The fastest way to install the MCP server and automatically inject it into your IDE configuration is to use our setup scripts:
+
+**For Windows (PowerShell):**
+```powershell
+git clone https://github.com/Inferno-Aditya/antigravity-mcp.git; cd antigravity-mcp; .\install.ps1
+```
+
+**For Mac/Linux (Bash):**
 ```bash
-git clone https://github.com/your-username/antigravity-supervisor.git
-cd antigravity-supervisor
+git clone https://github.com/Inferno-Aditya/antigravity-mcp.git && cd antigravity-mcp && bash install.sh
+```
+
+### Manual Installation
+If you prefer to set up manually:
+1. **Clone the repository**
+```bash
+git clone https://github.com/Inferno-Aditya/antigravity-mcp.git
+cd antigravity-mcp
 ```
 
 ### 2. Install dependencies
