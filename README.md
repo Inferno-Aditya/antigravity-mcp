@@ -40,6 +40,33 @@ The project is structured into three main components:
 
 ---
 
+## 🛠️ Available Tools & Resources
+
+The Supervisor provides a comprehensive suite of tools and resources for AI models to use:
+
+### Core Agent Lifecycle Tools
+- **`spawn_agent`**: Creates a new background agent session tracking memory and state. Supports configurations like `workspace_path`, `model`, `agent_type`, and `reasoning_effort`.
+- **`wait_for_idle`**: Blocks and waits until the target agent is no longer "working", saving orchestrators from having to build fragile polling loops.
+- **`send_message`**: Sends a prompt or instruction to a specific agent session.
+- **`send_message_with_schema`**: Forces the agent to output its final response adhering perfectly to a provided JSON schema.
+- **`check_inbox`**: Checks the specified session's persistent message log for new streaming tokens, tool calls, and thoughts.
+- **`get_agent_status`**: Returns the running status of an agent (`idle`, `working`, `error`).
+- **`kill_agent`**: Forcefully terminates a runaway or hanging agent process.
+- **`list_agents`**: Lists all active and historical sessions tracked by the MCP supervisor.
+
+### Introspection & System Tools
+- **`get_model_usage`**: Returns local usage statistics for spawned agents, simulating and tracking 5-hour and weekly boundaries.
+- **`apply_code_fix`**: A surgical debugging tool that directly overwrites a string in a file bypassing the agent. Used when an autonomous agent struggles with exact line replacement.
+
+### MCP Resources (Read-Only Streams)
+- **`agy://logs/{session_id}`**: Exposes raw stdout/stderr background logs.
+- **`agy://inbox/{session_id}`**: Exposes the full message history array.
+
+### Implicit Team Memory (Blackboard)
+Whenever an agent is spawned with a `workspace_path`, the MCP server automatically injects a hidden system instruction into every prompt directing agents to use a shared `TEAM_MEMORY.md` file. AI models controlling this MCP **do not** need to call specific blackboard read/write tools; agents natively use their file-editing tools to persist architectural decisions and shared state.
+
+---
+
 ## 🚀 Installation & Setup
 
 ### Prerequisites
