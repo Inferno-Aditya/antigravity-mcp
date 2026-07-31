@@ -99,6 +99,14 @@ The server runs over standard input/output (`stdio`), making it ready for MCP cl
 python server.py
 ```
 
+### 5. Enabling the Orchestrator Skill
+This repository includes a native Antigravity Skill located in `.agents/mcp_orchestrator/SKILL.md`. This skill transforms any LLM into a Principal Architect that will refuse to write code directly and instead properly delegate tasks to headless agents via this MCP.
+
+To use the skill in your own projects:
+1. Copy the `.agents` folder from this repository into the root of your target project.
+2. In your Antigravity IDE or chat, simply tell the model: *"Use the MCP Orchestrator Architect skill to build my project."* 
+3. The agent will instantly load the correct schema, constraints, and instructions without you needing to write a massive prompt!
+
 ---
 
 ## 💻 Usage & Configuration
