@@ -1,6 +1,30 @@
 Write-Host "🚀 Installing Antigravity Supervisor MCP..." -ForegroundColor Cyan
 
-# 1. Install dependencies
+$InstallDir = Join-Path $HOME "antigravity-supervisor"
+$RepoUrl = "https://github.com/Inferno-Aditya/antigravity-mcp.git"
+
+# 1. Download or Update Repository
+if (Test-Path $InstallDir) {
+    Write-Host "📦 Directory exists. Updating repository..." -ForegroundColor Yellow
+    Set-Location $InstallDir
+    try {
+        git pull origin main
+    } catch {
+        Write-Host "❌ Error updating repository." -ForegroundColor Red
+        exit 1
+    }
+} else {
+    Write-Host "📦 Cloning repository to $InstallDir..." -ForegroundColor Yellow
+    try {
+        git clone $RepoUrl $InstallDir
+        Set-Location $InstallDir
+    } catch {
+        Write-Host "❌ Error cloning repository." -ForegroundColor Red
+        exit 1
+    }
+}
+
+# 2. Install dependencies
 Write-Host "📦 Installing Python dependencies..." -ForegroundColor Yellow
 try {
     pip install -r requirements.txt
@@ -9,7 +33,7 @@ try {
     exit 1
 }
 
-# 2. Generate schemas
+# 3. Generate schemas
 Write-Host "⚙️ Generating static JSON schemas..." -ForegroundColor Yellow
 try {
     python sync_schemas.py
@@ -18,7 +42,7 @@ try {
     exit 1
 }
 
-# 3. Inject Config
+# 4. Inject Config
 Write-Host "💉 Injecting MCP Server into IDE configuration..." -ForegroundColor Yellow
 try {
     python install_helper.py
@@ -27,6 +51,6 @@ try {
     exit 1
 }
 
-# 4. Success
+# 5. Success
 Write-Host "✅ Installation complete! The Orchestrator Skill is ready to use." -ForegroundColor Green
 Write-Host "👉 Note: You must restart your Antigravity IDE or Claude Desktop for the new MCP to load." -ForegroundColor Magenta

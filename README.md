@@ -79,12 +79,12 @@ The fastest way to install the MCP server and automatically inject it into your 
 
 **For Windows (PowerShell):**
 ```powershell
-git clone https://github.com/Inferno-Aditya/antigravity-mcp.git; cd antigravity-mcp; .\install.ps1
+irm https://raw.githubusercontent.com/Inferno-Aditya/antigravity-mcp/main/install.ps1 | iex
 ```
 
 **For Mac/Linux (Bash):**
 ```bash
-git clone https://github.com/Inferno-Aditya/antigravity-mcp.git && cd antigravity-mcp && bash install.sh
+curl -sSL https://raw.githubusercontent.com/Inferno-Aditya/antigravity-mcp/main/install.sh | bash
 ```
 
 ### Manual Installation
