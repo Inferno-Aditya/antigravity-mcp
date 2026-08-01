@@ -4,3 +4,8 @@ __pycache__/
 .venv/
 venv/
 env/
+*.db
+node_modules/
+.next/
+.DS_Store
+

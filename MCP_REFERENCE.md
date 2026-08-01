@@ -1,86 +1,193 @@
-# Antigravity Supervisor MCP Reference
+# Antigravity Supervisor MCP — Reference
 
-This document outlines the available tools, resources, and implicit behaviors of the `antigravity-supervisor` MCP server. AI models can use this reference to properly orchestrate headless agents.
+This document describes the tools, resources, and implicit behaviours of the
+`antigravity-supervisor` MCP server after the v2 refactor.
+
+---
+
+## Supported Runner Backends
+
+The server supports multiple AI coding agent CLIs through its **runner abstraction layer**.
+
+| Runner | CLI binary | Notes |
+|--------|-----------|-------|
+| `agy` *(default)* | `google-antigravity` | Full feature support: `agent_type`, `reasoning_effort`, `mode`. |
+| `claude` | `@anthropic-ai/claude-code` | Install via `npm i -g @anthropic-ai/claude-code`. |
+
+Pass `runner="claude"` (or any registered name) to `spawn_agent` to select the backend.
+Call `get_model_usage()` to see all available runners at runtime.
+
+Third-party runners can be registered programmatically:
+```python
+from runners import register_runner
+from my_pkg import MyRunner
+register_runner(MyRunner())
+```
+
+---
 
 ## Core Agent Lifecycle Tools
 
 ### `spawn_agent`
-Creates a new background agent session tracking memory and state.
-- **Parameters**:
-  - `session_id` (str): Unique identifier for the agent session.
-  - `workspace_path` (str, optional): The absolute path to the directory the agent should operate in.
-  - `model` (str, optional): The Gemini model to use (e.g., `pro`, `flash`, `flash_lite`).
-  - `agent_type` (str, optional): Specialized agent type to spawn.
-  - `reasoning_effort` (str, optional): Sets reasoning strictness (`low`, `medium`, `high`).
-  - `skip_permissions` (bool, optional): Defaults to `True` for headless agents, bypassing terminal permission prompts safely.
-  - `mode` (str, optional): Set to `plan` for read-only planning, or `accept-edits` for immediate execution.
+Creates a new background agent session.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `session_id` | str | **required** | Unique identifier for the session. |
+| `workspace_path` | str | `None` | Absolute path the agent should operate in. |
+| `model` | str | `None` | Model slug (`pro`, `flash` for agy; `claude-opus-4-5` for claude). |
+| `agent_type` | str | `None` | Specialised agent type (agy-only). |
+| `reasoning_effort` | str | `None` | `low` \| `medium` \| `high` (agy-only). |
+| `skip_permissions` | bool | `True` | Bypass interactive prompts for headless agents. |
+| `mode` | str | `None` | `plan` (read-only) \| `accept-edits` (immediate) (agy-only). |
+| `runner` | str | `"agy"` | CLI backend to use. See table above. |
 
 ### `wait_for_idle`
-Blocks and waits until the target agent is no longer "working", saving orchestrators from having to build fragile polling loops.
-- **Parameters**:
-  - `session_id` (str): The target agent session.
-  - `timeout_seconds` (int, optional): Defaults to 300. Max wait time.
-- **Returns**: A JSON string containing the agent's new messages since the last read.
+Blocks until the target agent finishes its current task or the timeout expires.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `session_id` | str | **required** | Target session. |
+| `timeout_seconds` | int | `300` | Maximum wait time in seconds. |
+
+**Returns** — JSON object with `status` and `new_messages` (unread inbox entries).
 
 ### `send_message`
-Sends a prompt or instruction to a specific agent session. (Note: Automatically injects an `os.listdir()` of the workspace so the agent knows what files exist).
-- **Parameters**:
-  - `session_id` (str): The target agent session.
-  - `message` (str): The prompt for the agent.
+Sends a prompt to an agent. The workspace listing and `TEAM_MEMORY.md` note are injected automatically.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `session_id` | str | Target session. |
+| `message` | str | Prompt text. |
 
 ### `send_message_with_schema`
-Forces the agent to output its final response adhering perfectly to a provided JSON schema.
-- **Parameters**:
-  - `session_id` (str): The target agent session.
-  - `message` (str): The prompt for the agent.
-  - `json_schema` (str): The JSON schema string that the output must conform to.
+Forces the agent's final response to conform to a JSON schema.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `session_id` | str | Target session. |
+| `message` | str | Prompt text. |
+| `json_schema` | str | JSON schema string the output must conform to. |
 
 ### `check_inbox`
-Checks the specified session's persistent message log for new streaming tokens, tool calls, and thoughts.
-- **Parameters**:
-  - `session_id` (str): The target agent session.
-  - `mode` (str, optional): `read` (returns new messages and advances cursor), `peek` (returns new messages without advancing), `all` (returns full history). Defaults to `read`.
-- **Returns**: A JSON string containing `status` (`idle`, `working`, `error`, `completed`) and a list of new messages.
+Returns messages from the agent's persistent log.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `session_id` | str | **required** | Target session. |
+| `mode` | str | `"read"` | `read` (advances cursor) \| `peek` (no advance) \| `all` (full history). |
+
+**Returns** — JSON with `status` and `new_messages`.
 
 ### `get_agent_status`
-Returns the running status of an agent (`idle`, `working`, `error`).
-- **Parameters**: `session_id` (str)
+Returns the full status and diagnostics for a session, including **real token usage** parsed from the CLI's stream-json result events.
+
+```json
+{
+  "status": "completed",
+  "runner": "agy",
+  "conversation_id": "abc-123",
+  "total_messages_produced": 42,
+  "last_error": null,
+  "token_usage": {
+    "input_tokens": 1200,
+    "output_tokens": 350,
+    "total_tokens": 1550
+  }
+}
+```
 
 ### `kill_agent`
-Forcefully terminates a runaway or hanging agent process.
-- **Parameters**: `session_id` (str)
+Forcefully terminates a hanging agent process.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `session_id` | str | Target session. |
 
 ### `list_agents`
-Lists all active and historical sessions tracked by the MCP supervisor.
+Lists all tracked sessions with their status, runner, model, and workspace.
 
 ---
 
 ## Introspection & System Tools
 
 ### `get_model_usage`
-Returns the local usage statistics for spawned agents. Since the CLI does not expose live billing quotas directly, this simulates and tracks the **5-hour** and **weekly** boundaries locally.
-- **Returns**: A JSON payload detailing `stats`, `limits`, and `remaining` allowances.
+Returns **real token counts** aggregated from all sessions' stream-json result events.
+Also returns the list of available runner backends.
+
+> **Note:** Token counts will be `0` for sessions whose runner CLI does not emit
+> usage data in its result events.
 
 ### `apply_code_fix`
-A surgical debugging tool that directly overwrites a string in a file bypassing the agent. Used when an autonomous agent struggles with exact line replacement.
-- **Parameters**:
-  - `filepath` (str): Absolute path to the file.
-  - `target` (str): The exact string to replace.
-  - `replacement` (str): The new string to insert.
+A surgical find-and-replace (first occurrence only) for a file.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `filepath` | str | Absolute path to the target file. |
+| `target` | str | Exact string to find. |
+| `replacement` | str | Replacement string. |
+
+> **Safety:** The filepath is validated against all registered session workspaces.
+> Paths outside any known workspace are rejected. Spawn an agent with the correct
+> `workspace_path` before calling this tool.
 
 ---
 
 ## MCP Resources (Read-Only Streams)
 
-- **`agy://logs/{session_id}`**: Exposes raw stdout/stderr background logs.
-- **`agy://inbox/{session_id}`**: Exposes the full message history array.
+| URI | Description |
+|-----|-------------|
+| `agy://logs/{session_id}` | Raw stdout/stderr log stream (full history). |
+| `agy://inbox/{session_id}` | Full message history (non-destructive peek). |
 
 ---
 
 ## Implicit Features
 
-### Implicit Team Memory (Blackboard)
-Whenever an agent is spawned with a `workspace_path`, the MCP server automatically injects a hidden system instruction into every prompt:
-> *[SYSTEM NOTE: You are part of a multi-agent team. A shared memory file exists at `TEAM_MEMORY.md`. Use your file reading/writing tools to read from and write to this file to sync with other agents.]*
+### Team Memory (Blackboard)
+Whenever an agent is spawned with a `workspace_path`, every message sent to it is
+automatically augmented with a system note:
 
-AI models controlling this MCP **do not** need to call specific blackboard read/write tools. Spawned agents will natively use their own file-editing tools to persist architectural decisions, limits, and shared state in `TEAM_MEMORY.md`.
+> *[SYSTEM NOTE: Your workspace is `/path/to/project`. Current contents: …
+> A shared memory file exists at `TEAM_MEMORY.md`. Use your file tools to read
+> from and write to this file to sync with other agents.]*
+
+Agents coordinate architecture, shared variables, and constraints via this file
+autonomously.
+
+### Session Persistence
+All session state and message logs are persisted to SQLite at:
+```
+~/.antigravity/supervisor/sessions.db
+```
+Sessions survive server restarts. Agents that were `working` when the server
+crashed are automatically reset to `idle` on rehydration.
+
+### Log Rotation
+Each session's in-memory log is capped at **5 000 entries**. When the cap is
+reached, the oldest 25 % of entries are dropped and a `system_info` entry is
+appended. Rotation events are also flushed to the SQLite store.
+
+### Structured Logging
+The server writes structured JSON logs to a rotating file:
+```
+~/.antigravity/supervisor/logs/supervisor.log
+```
+Log files rotate at 5 MB and up to 3 backups are kept.
+
+---
+
+## Schema Directory
+
+Run `python sync_schemas.py` to (re)generate static JSON schemas for all tools
+into the IDE's expected schema directory.
+
+The directory is resolved automatically by platform:
+
+| Platform | Default path |
+|----------|-------------|
+| Windows | `%USERPROFILE%\.gemini\antigravity\mcp\antigravity-supervisor` |
+| macOS | `~/Library/Application Support/antigravity/mcp/antigravity-supervisor` |
+| Linux | `~/.config/antigravity/mcp/antigravity-supervisor` |
+
+Override with the `AGY_MCP_SCHEMA_DIR` environment variable.

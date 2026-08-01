@@ -1,158 +1,271 @@
-<div align="center">
-  <h1>🚀 Antigravity Supervisor MCP</h1>
-  <p><strong>A powerful Model Context Protocol (MCP) server for orchestrating headless, autonomous AI agents.</strong></p>
-  
-  [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
-  [![MCP](https://img.shields.io/badge/MCP-Ready-success.svg)](https://modelcontextprotocol.io/)
-  [![License](https://img.shields.io/badge/License-MIT-green.svg)](#license)
-</div>
+# Antigravity Supervisor MCP
+
+An MCP server for orchestrating background AI coding agents locally.
+
+Executing complex software engineering tasks within a single LLM chat session rapidly exhausts the model context window and blocks execution during long-running edits. Antigravity Supervisor MCP allows a primary LLM to delegate tasks to headless CLI agents running in background subprocesses, synchronizing work asynchronously without context bloat.
 
 ---
 
-## 📖 Overview
+## Why this exists
 
-**Antigravity Supervisor MCP** is a sophisticated local server built on the Model Context Protocol. It acts as an orchestration layer, allowing high-level AI models to spawn, manage, and interact with background subagents (powered by the `agy` CLI). By providing a seamless asynchronous interface, it empowers LLMs to delegate complex, multi-step tasks to specialized background workers without being blocked.
+### The Problem
+When an AI coding assistant refactors multiple files, runs tests, or generates a project, all tool calls and outputs accumulate in a single conversation context. This leads to three main issues:
 
-## ✨ Key Features
+- **Context Exhaustion**: Large tool outputs consume context quickly, causing the model to forget earlier instructions or produce lower-quality output.
+- **Synchronous Execution**: The primary model blocks while waiting for terminal commands or file modifications to complete.
+- **Fragile Polling**: Custom agent setups often rely on continuous polling loops to monitor progress, consuming tokens and API requests unnecessarily.
 
-- **🤖 Agent Orchestration**: Dynamically spawn background agents (`spawn_agent`) with configurable models, reasoning efforts, and workspace paths.
-- **📩 Asynchronous Messaging**: Send tasks to agents (`send_message`) and enforce output structures via JSON schemas (`send_message_with_schema`).
-- **⏳ Smart Synchronization**: Avoid fragile polling loops by leveraging `wait_for_idle` to block until a background agent finishes its task.
-- **📊 Usage Tracking**: Built-in quota simulation for 5-hour and weekly limits to manage local API boundaries (`get_model_usage`).
-- **🩺 Surgical Debugging**: Apply exact string replacements directly to files bypassing the agent if necessary (`apply_code_fix`).
-- **🧠 Implicit Team Memory**: Automatically injects workspace awareness and shared blackboard instructions (`TEAM_MEMORY.md`) so agents can collaborate natively.
-- **📡 Read-Only Streams**: Access raw `stdout`/`stderr` logs and full message histories via native MCP resources (`agy://logs/{session_id}`).
+### What this project changes
+Antigravity Supervisor MCP provides a standard protocol interface for spawning subagents in background processes. Instead of performing edits directly, a primary LLM acts as an architect. It delegates tasks to background subagents (`google-antigravity` or `claude-code`), waits for completion using an event-driven mechanism, and collects structured results.
 
 ---
 
-## 🏗️ System Architecture
+## Features
 
-The project is structured into three main components:
+### Subprocess Agent Orchestration
+Spawns background agent sessions in isolated directories using CLI binaries (`agy` or `claude`).
+*Why it matters*: Isolates subagent tool calls and file context from the primary model's conversation window.
 
-1. **`server.py`**: The FastMCP server entry point. It exposes all the tools and resources to the MCP client.
-2. **`manager.py` (`AgentManager`)**: The core logic handler. It manages concurrent agent sessions, spawns subprocesses for the `agy` CLI, reads standard output asynchronously, and maintains conversation states and message inboxes.
-3. **`sync_schemas.py`**: A utility script that generates static JSON schemas for all MCP tools, facilitating lazy-loading or integration into specific IDEs.
+### Multi-Runner Backend Layer
+Supports multiple CLI backends through a unified interface (`agy` for Gemini models, `claude` for Claude Code).
+*Why it matters*: Prevents lock-in to a single LLM provider or CLI toolchain.
 
-### Tech Stack
-- **Framework**: `mcp` (FastMCP)
-- **Agent CLI**: `google-antigravity` (`agy` binary)
-- **Language**: Python 3.9+ (utilizing `asyncio` for non-blocking IO)
+### Smart Synchronization (`wait_for_idle`)
+Blocks orchestrator execution non-blockingly until a target background agent completes its task or times out.
+*Why it matters*: Eliminates polling loops and wasteful token consumption while waiting for long-running operations.
 
----
+### Implicit Team Memory
+Injects workspace context and a shared `TEAM_MEMORY.md` directive into every subagent prompt automatically.
+*Why it matters*: Allows subagents in the same workspace to coordinate architectural decisions and file contracts without manual prompt passing.
 
-## 🛠️ Available Tools & Resources
+### SQLite Session Persistence
+Stores session configurations, cursors, and event logs in an SQLite database (`sessions.db`).
+*Why it matters*: Ensures session state and message history survive server restarts and crash events.
 
-The Supervisor provides a comprehensive suite of tools and resources for AI models to use:
+### Real Token Usage Accounting
+Parses CLI `stream-json` events to track actual input and output tokens consumed per session and in aggregate.
+*Why it matters*: Provides clear visibility into token costs across multi-agent workflows.
 
-### Core Agent Lifecycle Tools
-- **`spawn_agent`**: Creates a new background agent session tracking memory and state. Supports configurations like `workspace_path`, `model`, `agent_type`, and `reasoning_effort`.
-- **`wait_for_idle`**: Blocks and waits until the target agent is no longer "working", saving orchestrators from having to build fragile polling loops.
-- **`send_message`**: Sends a prompt or instruction to a specific agent session.
-- **`send_message_with_schema`**: Forces the agent to output its final response adhering perfectly to a provided JSON schema.
-- **`check_inbox`**: Checks the specified session's persistent message log for new streaming tokens, tool calls, and thoughts.
-- **`get_agent_status`**: Returns the running status of an agent (`idle`, `working`, `error`).
-- **`kill_agent`**: Forcefully terminates a runaway or hanging agent process.
-- **`list_agents`**: Lists all active and historical sessions tracked by the MCP supervisor.
+### Schema-Enforced Output
+Supports requesting JSON outputs that conform strictly to a target JSON schema.
+*Why it matters*: Ensures subagents return structured data suitable for automated verification or downstream logic.
 
-### Introspection & System Tools
-- **`get_model_usage`**: Returns local usage statistics for spawned agents, simulating and tracking 5-hour and weekly boundaries.
-- **`apply_code_fix`**: A surgical debugging tool that directly overwrites a string in a file bypassing the agent. Used when an autonomous agent struggles with exact line replacement.
-
-### MCP Resources (Read-Only Streams)
-- **`agy://logs/{session_id}`**: Exposes raw stdout/stderr background logs.
-- **`agy://inbox/{session_id}`**: Exposes the full message history array.
-
-### Implicit Team Memory (Blackboard)
-Whenever an agent is spawned with a `workspace_path`, the MCP server automatically injects a hidden system instruction into every prompt directing agents to use a shared `TEAM_MEMORY.md` file. AI models controlling this MCP **do not** need to call specific blackboard read/write tools; agents natively use their file-editing tools to persist architectural decisions and shared state.
+### Surgical Code Repair (`apply_code_fix`)
+Provides a direct find-and-replace tool for exact string edits, bounded by registered session workspaces.
+*Why it matters*: Allows recovery when an autonomous agent struggles with line-replacement tools.
 
 ---
 
-## 🚀 Installation & Setup
+## Architecture
+
+```mermaid
+graph TD
+    Client["MCP Client (IDE / Claude Desktop / CLI)"] <-->|"MCP Protocol (stdio)"| Server["server.py (FastMCP Server)"]
+    Server <--> Manager["manager.py (AgentManager)"]
+    Manager <--> Store["storage/sqlite_store.py (SQLite Store)"]
+    Manager <--> Runners["runners/ (Runner Layer)"]
+    Runners <-->|"agy_runner.py"| AGY["google-antigravity CLI Subprocess"]
+    Runners <-->|"claude_runner.py"| Claude["claude-code CLI Subprocess"]
+    AGY <--> Workspace["Workspace Files & TEAM_MEMORY.md"]
+    Claude <--> Workspace
+```
+
+### Component Responsibilities
+
+- **MCP Client**: The primary LLM or user environment (e.g., Claude Desktop, Antigravity IDE) that invokes MCP tools.
+- **`server.py`**: The FastMCP entry point. Exposes tools (`spawn_agent`, `wait_for_idle`, `send_message`) and resources (`agy://logs/{session_id}`) over `stdio`.
+- **`manager.py` (`AgentManager` & `Session`)**: Manages session state, process lifecycles, streaming event loops, and workspace security boundaries.
+- **`runners/`**: Translates internal messages into CLI flag arguments (`build_command`) and parses standard output JSON events into canonical types (`parse_event`).
+- **`storage/`**: Manages persistent storage of sessions and logs in SQLite using WAL mode and log rotation.
+- **Workspace**: The target directory on disk where background agents execute tool calls and edit source files.
+
+---
+
+## How it works
+
+Below is the step-by-step execution flow of a delegated task:
+
+```
+1. Client calls spawn_agent(session_id="auth-task", workspace_path="/path/to/app", runner="agy")
+   ↓
+2. Supervisor creates a Session record and stores metadata in SQLite
+   ↓
+3. Client calls send_message(session_id="auth-task", message="Implement JWT middleware")
+   ↓
+4. Manager injects workspace path and TEAM_MEMORY.md directive, then spawns the CLI subprocess
+   ↓
+5. Runner streams stdout line-by-line, parsing JSON events into canonical logs and token metrics
+   ↓
+6. Client calls wait_for_idle(session_id="auth-task") to block until completion
+   ↓
+7. Subprocess exits; wait_for_idle returns unread inbox messages and status to the Client
+```
+
+---
+
+## Installation
 
 ### Prerequisites
-- Python 3.9 or higher installed on your system.
-- The `google-antigravity` package installed globally or in your environment (providing the `agy` CLI).
-- A compatible MCP client (like Claude Desktop, cursor, or the Antigravity IDE).
 
-### 1-Click Installation
-The fastest way to install the MCP server and automatically inject it into your IDE configuration is to use our setup scripts:
+- Python 3.9 or higher
+- At least one supported agent CLI installed:
+  - `google-antigravity` (`agy` binary) for Gemini backend
+  - `@anthropic-ai/claude-code` (`claude` binary) for Claude Code backend
 
-**For Windows (PowerShell):**
+### One-Line Install
+
+**Windows (PowerShell):**
 ```powershell
 irm https://raw.githubusercontent.com/Inferno-Aditya/antigravity-mcp/main/install.ps1 | iex
 ```
 
-**For Mac/Linux (Bash):**
+**macOS / Linux (Bash):**
 ```bash
 curl -sSL https://raw.githubusercontent.com/Inferno-Aditya/antigravity-mcp/main/install.sh | bash
 ```
 
 ### Manual Installation
-If you prefer to set up manually:
-1. **Clone the repository**
-```bash
-git clone https://github.com/Inferno-Aditya/antigravity-mcp.git
-cd antigravity-mcp
-```
 
-### 2. Install dependencies
-Install the required packages using `pip`:
-```bash
-pip install -r requirements.txt
-```
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Inferno-Aditya/antigravity-mcp.git
+   cd antigravity-mcp
+   ```
 
-### 3. Generate Tool Schemas (Optional)
-If your MCP client requires static JSON schemas:
-```bash
-python sync_schemas.py
-```
-*(This will generate schemas into your local `~/.gemini/antigravity/mcp/antigravity-supervisor` directory).*
+2. Install Python dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### 4. Run the Server
-The server runs over standard input/output (`stdio`), making it ready for MCP clients:
-```bash
-python server.py
-```
-
-### 5. Enabling the Orchestrator Skill
-This repository includes a native Antigravity Skill located in `.agents/mcp_orchestrator/SKILL.md`. This skill transforms any LLM into a Principal Architect that will refuse to write code directly and instead properly delegate tasks to headless agents via this MCP.
-
-To use the skill in your own projects:
-1. Copy the `.agents` folder from this repository into the root of your target project.
-2. In your Antigravity IDE or chat, simply tell the model: *"Use the MCP Orchestrator Architect skill to build my project."* 
-3. The agent will instantly load the correct schema, constraints, and instructions without you needing to write a massive prompt!
+3. Generate static JSON schemas for your MCP client (optional):
+   ```bash
+   python sync_schemas.py
+   ```
 
 ---
 
-## 💻 Usage & Configuration
+## Quick Start
 
-To use the Supervisor in your MCP client, configure it to run `server.py`. 
+Add the server to your MCP client configuration file (e.g., `claude_desktop_config.json`):
 
-### Example Configuration (JSON)
 ```json
 {
   "mcpServers": {
     "antigravity-supervisor": {
       "command": "python",
-      "args": ["/absolute/path/to/antigravity-supervisor/server.py"]
+      "args": ["/absolute/path/to/antigravity-mcp/server.py"]
     }
   }
 }
 ```
 
-### Example AI Workflow
-Once connected, an orchestrator AI can perform workflows like this:
-1. `spawn_agent(session_id="task-1", workspace_path="/path/to/project", model="pro")`
-2. `send_message(session_id="task-1", message="Refactor the authentication module.")`
-3. `wait_for_idle(session_id="task-1")`
-4. Inspect the inbox and agent status to verify completion.
+Once connected, delegate a task from your primary chat session:
+
+```text
+1. spawn_agent(session_id="refactor-db", workspace_path="/projects/my-app")
+2. send_message(session_id="refactor-db", message="Migrate database connection pool to asyncpg.")
+3. wait_for_idle(session_id="refactor-db")
+```
 
 ---
 
-## 🤝 Contributing
+## Available Tools
 
-Contributions, issues, and feature requests are welcome! Feel free to check the issues page if you want to contribute.
+| Tool | Purpose | Returns | Example Call |
+|---|---|---|---|
+| `spawn_agent` | Initializes a background session. | Confirmation string. | `spawn_agent(session_id="s1", workspace_path="/app", runner="agy")` |
+| `send_message` | Queues a prompt for execution. | Queue status message. | `send_message(session_id="s1", message="Run tests")` |
+| `send_message_with_schema` | Queues a prompt with forced JSON schema output. | Queue status message. | `send_message_with_schema(session_id="s1", message="...", json_schema="{...}")` |
+| `check_inbox` | Retrieves unread or all messages. | JSON payload with messages. | `check_inbox(session_id="s1", mode="read")` |
+| `wait_for_idle` | Blocks non-blockingly until agent completes. | JSON payload of unread messages. | `wait_for_idle(session_id="s1", timeout_seconds=300)` |
+| `get_agent_status` | Returns session state and token metrics. | JSON diagnostic object. | `get_agent_status(session_id="s1")` |
+| `kill_agent` | Terminates a running agent process. | Status confirmation string. | `kill_agent(session_id="s1")` |
+| `list_agents` | Lists all active and past sessions. | JSON array of sessions. | `list_agents()` |
+| `get_model_usage` | Aggregates token usage across sessions. | JSON usage report. | `get_model_usage()` |
+| `apply_code_fix` | Applies a surgical string replacement. | Execution result string. | `apply_code_fix(filepath="/app/main.py", target="old", replacement="new")` |
 
-## 📄 License
+---
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+## Repository Structure
+
+```
+antigravity-mcp/
+├── server.py              # Entry point exposing MCP tools and resources over stdio.
+├── manager.py             # Core orchestrator handling session states, processes, and event dispatch.
+├── sync_schemas.py        # Generates static JSON schemas for MCP clients requiring static files.
+├── test_manager.py        # Integration smoke test suite for verifying runner execution.
+├── install.ps1            # Automated installer for Windows environments.
+├── install.sh             # Automated installer for POSIX environments.
+├── install_helper.py      # Python script used by installers to update client config files.
+├── MCP_REFERENCE.md       # API parameter details and schema reference manual.
+├── TEAM_MEMORY.md         # Template shared memory blackboard file.
+├── runners/               # CLI runner implementation module.
+│   ├── base.py            # Abstract AgentRunner base class.
+│   ├── agy_runner.py      # Google Antigravity CLI runner.
+│   └── claude_runner.py   # Anthropic Claude Code CLI runner.
+├── storage/               # Persistence layer module.
+│   └── sqlite_store.py    # SQLite database transactions, WAL configuration, and log rotation.
+└── .agents/               # Embedded skill configurations.
+    └── mcp_orchestrator/  # Skill instructing primary LLMs to operate as delegating architects.
+```
+
+---
+
+## Design Decisions
+
+### Why SQLite
+SQLite is included in the Python standard library, requiring no external server dependencies. Utilizing WAL mode allows synchronous writes with negligible latency while supporting concurrent reads. Persisting sessions to disk ensures work can be tracked or inspected across client restarts.
+
+### Why Asynchronous Process Spawning
+Executing background subagents in separate OS subprocesses prevents long-running operations (such as test suites or builds) from blocking the primary MCP server event loop.
+
+### Why MCP (Model Context Protocol)
+MCP provides an open standard interface supported by multiple IDEs and clients. Building on MCP allows any compatible client to manage multi-agent workflows without custom client extensions.
+
+### Why Runner Abstraction Layer
+CLI interfaces differ in flag syntax, session resumption flags (`--conversation` vs `--resume`), and event output formats. The `AgentRunner` base class encapsulates these differences, allowing new CLI tools to be integrated without altering core session logic.
+
+### Why Shared Blackboard Memory (`TEAM_MEMORY.md`)
+Passing large structural contexts repeatedly in prompts increases token usage. Injecting a reference to a shared file allows subagents in the same workspace to read and update shared constraints autonomously using standard file-system operations.
+
+---
+
+## Limitations
+
+- **Local Execution Only**: Subagents execute on the local machine where the MCP server runs; distributed worker nodes are not currently supported.
+- **CLI Dependency**: Requires locally installed and authenticated CLI binaries (`agy` or `claude`).
+- **CLI Differences**: Features like `agent_type`, `reasoning_effort`, and `mode` are specific to `agy` and are ignored by the `claude` runner.
+
+---
+
+## Roadmap
+
+- [x] `google-antigravity` (`agy`) runner support
+- [x] Anthropic `claude-code` (`claude`) runner support
+- [x] SQLite session persistence & WAL mode
+- [x] Real-time token usage parsing
+- [x] Static schema exporter (`sync_schemas.py`)
+- [ ] Web-based session monitoring dashboard
+- [ ] Remote execution over SSH / Docker containers
+- [ ] Automated subagent retry policy on error
+
+---
+
+## Contributing
+
+Contributions are welcome. To contribute:
+
+1. Fork the repository and create a feature branch.
+2. Ensure code conforms to Python standard formatting standards (`pep8` / `black`).
+3. Run the integration test suite before submitting a pull request:
+   ```bash
+   python test_manager.py
+   python test_manager.py --runner claude
+   ```
+4. Open a pull request describing the changes and motivation.
+
+---
+
+## License
+
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.

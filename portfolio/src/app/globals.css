@@ -1,0 +1,161 @@
+@import "tailwindcss";
+
+@theme {
+  --color-midnight: #0B132B;
+  --color-slate-dark: #1C2541;
+  --color-slate-card: #141D36;
+  --color-slate-light: #2A365C;
+  --color-offwhite: #F0F6FC;
+  --color-teal-accent: #00A896;
+  --color-gold-accent: #F4D03F;
+}
+
+@layer base {
+  :root {
+    --bg-midnight: #0B132B;
+    --bg-slate-dark: #1C2541;
+    --bg-slate-card: #141D36;
+    --bg-slate-light: #2A365C;
+    --text-offwhite: #F0F6FC;
+    --text-muted: #94A3B8;
+    --accent-teal: #00A896;
+    --accent-teal-glow: rgba(0, 168, 150, 0.35);
+    --accent-gold: #F4D03F;
+    --accent-gold-glow: rgba(244, 208, 63, 0.35);
+  }
+
+  * {
+    border-color: rgba(240, 246, 252, 0.1);
+  }
+
+  body {
+    background-color: #0B132B;
+    color: #F0F6FC;
+    font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+  }
+}
+
+/* Custom Gradients */
+.gradient-bg {
+  background: radial-gradient(circle at 50% 0%, #1C2541 0%, #0B132B 75%);
+}
+
+.gradient-bg-radial {
+  background: radial-gradient(ellipse at 50% 20%, #1C2541 0%, #0B132B 80%);
+}
+
+.gradient-text-teal-gold {
+  background: linear-gradient(135deg, #00A896 0%, #F4D03F 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-gold {
+  background: linear-gradient(135deg, #F4D03F 0%, #FFFFFF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-teal {
+  background: linear-gradient(135deg, #00A896 0%, #6EE7B7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Glassmorphism */
+.glass-panel {
+  background: rgba(28, 37, 65, 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(240, 246, 252, 0.08);
+}
+
+.glass-card {
+  background: rgba(20, 29, 54, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 168, 150, 0.18);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.glass-card-gold {
+  background: rgba(20, 29, 54, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(244, 208, 63, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Glow effects */
+.glow-teal {
+  box-shadow: 0 0 25px rgba(0, 168, 150, 0.4);
+}
+
+.glow-gold {
+  box-shadow: 0 0 25px rgba(244, 208, 63, 0.4);
+}
+
+.glow-teal-sm {
+  box-shadow: 0 0 12px rgba(0, 168, 150, 0.3);
+}
+
+.glow-gold-sm {
+  box-shadow: 0 0 12px rgba(244, 208, 63, 0.3);
+}
+
+/* Background Grid Pattern */
+.bg-grid-pattern {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B132B;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2A365C;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00A896;
+}
+
+/* Custom Keyframe Animations */
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.08);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 6s ease-in-out infinite;
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-15px) rotate(2deg);
+  }
+}
+
+.animate-float {
+  animation: floatSlow 8s ease-in-out infinite;
+}
